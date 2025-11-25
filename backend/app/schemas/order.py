@@ -89,7 +89,7 @@ class OrderCreate(BaseModel):
     # For scheduled orders (Phase 2)
     order_type: OrderType = OrderType.INSTANT
     scheduled_date: Optional[datetime] = None
-    scheduled_time_slot: Optional[str] = None
+    time_slot_id: Optional[int] = None  # Reference to TimeSlot model
 
 
 class OrderStatusUpdate(BaseModel):
@@ -112,6 +112,11 @@ class OrderResponse(BaseModel):
     coupon_code: Optional[str] = None
     delivery_instructions: Optional[str] = None
     estimated_delivery_time: Optional[datetime] = None
+    
+    # Scheduled delivery fields
+    scheduled_date: Optional[datetime] = None
+    scheduled_time_slot: Optional[str] = None
+    
     created_at: datetime
     confirmed_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
@@ -138,6 +143,8 @@ class OrderListResponse(BaseModel):
     restaurant_name: Optional[str] = None
     restaurant_logo: Optional[str] = None
     created_at: datetime
+    scheduled_date: Optional[datetime] = None
+    scheduled_time_slot: Optional[str] = None
     
     class Config:
         from_attributes = True

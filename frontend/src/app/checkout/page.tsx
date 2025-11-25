@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { MapPin, CreditCard, DollarSign, CheckCircle, Loader2 } from 'lucide-react';
+import { ScheduledDelivery } from '@/components/scheduled-delivery/scheduled-delivery';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -32,6 +33,9 @@ const checkoutSchema = z.object({
   address_id: z.number({ required_error: 'Please select a delivery address.' }),
   payment_method: z.enum(['card', 'cod'], { required_error: 'Please select a payment method.' }),
   delivery_instructions: z.string().optional(),
+  delivery_type: z.enum(['instant', 'scheduled']).default('instant'),
+  scheduled_date: z.date().optional(),
+  time_slot_id: z.number().optional(),
 });
 
 type CheckoutFormData = z.infer<typeof checkoutSchema>;
@@ -242,6 +246,22 @@ export default function CheckoutPage() {
             {errors.payment_method && (
               <p className="mt-2 text-sm text-red-600">{errors.payment_method.message}</p>
             )}
+          </div>
+
+          {/* Scheduled Delivery */}
+          <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">Delivery Options</h2>
+            <ScheduledDelivery
+              restaurantId={cart.restaurant_id || 0}
+              onDeliveryChange={(delivery) => {
+                // Store delivery info for order creation
+                setValue('delivery_type', delivery.type);
+                if (delivery.type === 'scheduled') {
+                  setValue('scheduled_date', delivery.date);
+                  setValue('time_slot_id', delivery.timeSlotId);
+                }
+              }}
+            />
           </div>
 
           {/* Delivery Instructions */}

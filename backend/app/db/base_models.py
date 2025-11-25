@@ -6,3 +6,4 @@ from app.models.order import Order, OrderItem
 from app.models.address import Address
 from app.models.payment import Payment
 from app.models.cart import Cart, CartItem
+from app.models.time_slot import TimeSlot, RestaurantSlotConfig, SlotAvailability, ScheduledOrderReminder

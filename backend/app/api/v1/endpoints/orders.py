@@ -1,20 +1,23 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import uuid
 
 from app.db.session import get_db
 from app.api.deps import get_current_user, get_admin_user
 from app.models.user import User
-from app.models.order import Order, OrderItem, OrderStatus
+from app.models.order import Order, OrderItem, OrderStatus, OrderType
 from app.models.cart import Cart, CartItem
 from app.models.restaurant import Restaurant, MenuItem
 from app.models.address import Address
 from app.models.payment import Payment, PaymentStatus, PaymentMethod
+from app.models.time_slot import TimeSlot, SlotAvailability, ScheduledOrderReminder
 from app.schemas.order import (
     OrderCreate, OrderResponse, OrderListResponse, OrderStatusUpdate, OrderItemResponse
 )
+from app.schemas.time_slot import ScheduledOrderEdit, ScheduledOrderCancel
 from app.schemas.common import PaginatedResponse, MessageResponse
 
 router = APIRouter()
@@ -78,7 +81,7 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create a new order from cart"""
+    """Create a new order from cart (supports both instant and scheduled delivery)"""
     # Get user's cart
     cart = db.query(Cart).filter(Cart.user_id == current_user.id).first()
     
@@ -110,6 +113,47 @@ async def create_order(
             detail="Restaurant not found"
         )
     
+    # Validate scheduled order if applicable
+    scheduled_time_slot_name = None
+    if order_data.order_type == OrderType.SCHEDULED:
+        if not order_data.scheduled_date or not order_data.time_slot_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Scheduled date and time slot are required for scheduled orders"
+            )
+        
+        # Get time slot
+        time_slot = db.query(TimeSlot).filter(TimeSlot.id == order_data.time_slot_id).first()
+        if not time_slot:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Time slot not found"
+            )
+        
+        scheduled_time_slot_name = time_slot.name
+        scheduled_date = order_data.scheduled_date.date() if isinstance(order_data.scheduled_date, datetime) else order_data.scheduled_date
+        
+        # Check slot availability
+        slot_avail = db.query(SlotAvailability).filter(
+            and_(
+                SlotAvailability.restaurant_id == restaurant.id,
+                SlotAvailability.time_slot_id == order_data.time_slot_id,
+                SlotAvailability.date == scheduled_date
+            )
+        ).first()
+        
+        if not slot_avail or slot_avail.remaining_capacity <= 0 or not slot_avail.is_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected time slot is not available"
+            )
+        
+        # Update slot availability
+        slot_avail.booked_orders += 1
+        slot_avail.remaining_capacity -= 1
+        if slot_avail.remaining_capacity <= 0:
+            slot_avail.is_available = False
+    
     # Calculate totals
     subtotal = cart.subtotal
     tax_rate = 0.05  # 5% GST
@@ -133,7 +177,11 @@ async def create_order(
     total_amount = subtotal + tax_amount + delivery_fee - discount_amount
     
     # Estimated delivery time
-    estimated_delivery = datetime.utcnow() + timedelta(minutes=restaurant.preparation_time + 20)
+    if order_data.order_type == OrderType.INSTANT:
+        estimated_delivery = datetime.utcnow() + timedelta(minutes=restaurant.preparation_time + 20)
+    else:
+        # For scheduled orders, set estimated delivery to scheduled time
+        estimated_delivery = order_data.scheduled_date
     
     # Create order
     order = Order(
@@ -150,8 +198,8 @@ async def create_order(
         coupon_code=order_data.coupon_code,
         delivery_instructions=order_data.delivery_instructions,
         estimated_delivery_time=estimated_delivery,
-        scheduled_date=order_data.scheduled_date,
-        scheduled_time_slot=order_data.scheduled_time_slot
+        scheduled_date=order_data.scheduled_date if order_data.order_type == OrderType.SCHEDULED else None,
+        scheduled_time_slot=scheduled_time_slot_name
     )
     db.add(order)
     db.flush()
@@ -172,6 +220,16 @@ async def create_order(
             special_instructions=cart_item.special_instructions
         )
         db.add(order_item)
+    
+    # Create reminder for scheduled orders
+    if order_data.order_type == OrderType.SCHEDULED:
+        reminder = ScheduledOrderReminder(
+            order_id=order.id,
+            reminder_1_hours=24,
+            reminder_2_hours=2,
+            reminder_3_hours=0  # 30 minutes represented as 0 (would use fractional hours)
+        )
+        db.add(reminder)
     
     # Clear cart
     db.query(CartItem).filter(CartItem.cart_id == cart.id).delete()
@@ -389,3 +447,183 @@ async def reorder(
     db.commit()
     
     return MessageResponse(message="Items added to cart")
+
+
+# ============================================
+# Scheduled Order Management
+# ============================================
+
+@router.get("/scheduled/upcoming", response_model=List[OrderResponse])
+async def get_upcoming_scheduled_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get user's upcoming scheduled orders"""
+    orders = db.query(Order).filter(
+        Order.user_id == current_user.id,
+        Order.order_type == OrderType.SCHEDULED,
+        Order.scheduled_date >= datetime.utcnow(),
+        Order.status.in_([OrderStatus.PENDING, OrderStatus.CONFIRMED])
+    ).order_by(Order.scheduled_date).all()
+    
+    return [get_order_response(order, db) for order in orders]
+
+
+@router.put("/{order_id}/reschedule", response_model=OrderResponse)
+async def reschedule_order(
+    order_id: int,
+    schedule_update: ScheduledOrderEdit,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Edit/reschedule a scheduled order"""
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id,
+        Order.order_type == OrderType.SCHEDULED
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scheduled order not found"
+        )
+    
+    # Can only reschedule pending or confirmed orders
+    if order.status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot reschedule order in current status"
+        )
+    
+    # Check if order is too close to scheduled time
+    if order.scheduled_date:
+        hours_until = (order.scheduled_date - datetime.utcnow()).total_seconds() / 3600
+        if hours_until < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot reschedule order less than 2 hours before delivery time"
+            )
+    
+    # Update scheduled date/time if provided
+    if schedule_update.scheduled_date and schedule_update.time_slot_id:
+        # Release old slot
+        if order.scheduled_date:
+            old_date = order.scheduled_date.date()
+            old_slots = db.query(SlotAvailability).filter(
+                and_(
+                    SlotAvailability.restaurant_id == order.restaurant_id,
+                    SlotAvailability.date == old_date
+                )
+            ).all()
+            for slot in old_slots:
+                if slot.booked_orders > 0:
+                    slot.booked_orders -= 1
+                    slot.remaining_capacity += 1
+                    if slot.remaining_capacity > 0:
+                        slot.is_available = True
+        
+        # Get new time slot
+        time_slot = db.query(TimeSlot).filter(TimeSlot.id == schedule_update.time_slot_id).first()
+        if not time_slot:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Time slot not found"
+            )
+        
+        # Check new slot availability
+        new_slot_avail = db.query(SlotAvailability).filter(
+            and_(
+                SlotAvailability.restaurant_id == order.restaurant_id,
+                SlotAvailability.time_slot_id == schedule_update.time_slot_id,
+                SlotAvailability.date == schedule_update.scheduled_date
+            )
+        ).first()
+        
+        if not new_slot_avail or new_slot_avail.remaining_capacity <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Selected time slot is not available"
+            )
+        
+        # Book new slot
+        new_slot_avail.booked_orders += 1
+        new_slot_avail.remaining_capacity -= 1
+        if new_slot_avail.remaining_capacity <= 0:
+            new_slot_avail.is_available = False
+        
+        # Update order
+        order.scheduled_date = datetime.combine(schedule_update.scheduled_date, time_slot.start_time)
+        order.scheduled_time_slot = time_slot.name
+        order.estimated_delivery_time = order.scheduled_date
+    
+    # Update delivery instructions if provided
+    if schedule_update.delivery_instructions is not None:
+        order.delivery_instructions = schedule_update.delivery_instructions
+    
+    db.commit()
+    db.refresh(order)
+    
+    return get_order_response(order, db)
+
+
+@router.post("/{order_id}/cancel-scheduled", response_model=OrderResponse)
+async def cancel_scheduled_order(
+    order_id: int,
+    cancel_data: ScheduledOrderCancel,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Cancel a scheduled order with reason"""
+    order = db.query(Order).filter(
+        Order.id == order_id,
+        Order.user_id == current_user.id,
+        Order.order_type == OrderType.SCHEDULED
+    ).first()
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scheduled order not found"
+        )
+    
+    # Can only cancel pending or confirmed orders
+    if order.status not in [OrderStatus.PENDING, OrderStatus.CONFIRMED]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot cancel order in current status"
+        )
+    
+    # Release slot capacity
+    if order.scheduled_date:
+        scheduled_date = order.scheduled_date.date()
+        slot_availabilities = db.query(SlotAvailability).filter(
+            and_(
+                SlotAvailability.restaurant_id == order.restaurant_id,
+                SlotAvailability.date == scheduled_date
+            )
+        ).all()
+        
+        for slot in slot_availabilities:
+            if slot.booked_orders > 0:
+                slot.booked_orders -= 1
+                slot.remaining_capacity += 1
+                if slot.remaining_capacity > 0:
+                    slot.is_available = True
+    
+    # Cancel order
+    order.status = OrderStatus.CANCELLED
+    order.cancelled_at = datetime.utcnow()
+    order.cancellation_reason = cancel_data.cancellation_reason
+    
+    # Handle refund if payment was made
+    payment = db.query(Payment).filter(Payment.order_id == order.id).first()
+    if payment and payment.status == PaymentStatus.COMPLETED:
+        payment.status = PaymentStatus.REFUNDED
+        payment.refunded_at = datetime.utcnow()
+        payment.refund_amount = payment.amount
+    
+    db.commit()
+    db.refresh(order)
+    
+    return get_order_response(order, db)
