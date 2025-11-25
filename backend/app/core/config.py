@@ -6,9 +6,10 @@ from pydantic import AnyHttpUrl
 class Settings(BaseSettings):
     PROJECT_NAME: str = "SmartBite"
     API_V1_STR: str = "/api/v1"
+    DEBUG: bool = True
     
     # Security
-    SECRET_KEY: str = "your-super-secret-key-change-in-production"
+        SECRET_KEY: str = "d217063b398ecd6c38211eab5523144f9791f6d213df572c9cf93b877bfb0d1e"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7

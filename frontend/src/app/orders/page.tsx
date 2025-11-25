@@ -70,6 +70,27 @@ export default function OrderHistoryPage() {
     fetchOrders(newPage);
   };
 
+  const handleReorder = async (orderId: number) => {
+    try {
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
+
+      // In a real implementation, we would:
+      // 1. Fetch the full order details with items
+      // 2. Add all items to cart
+      // 3. Navigate to cart or checkout
+      
+      // For now, just show a toast
+      toast.success('Added items to cart! This would reorder the meal.');
+      
+      // Navigate to cart
+      // window.location.href = '/cart';
+    } catch (error) {
+      console.error('Error reordering:', error);
+      toast.error('Failed to reorder. Please try again.');
+    }
+  };
+
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
       case 'delivered': return 'default';
@@ -151,13 +172,24 @@ export default function OrderHistoryPage() {
                 {new Date(order.created_at).toLocaleString()}
               </p>
             </div>
-            <div className="flex flex-col items-start md:items-end mt-4 md:mt-0">
+            <div className="flex flex-col items-start md:items-end mt-4 md:mt-0 gap-2">
               <p className="text-2xl font-bold text-primary-600 mb-2">₹{order.total_amount.toFixed(2)}</p>
-              <Link href={`/orders/${order.id}`}> {/* Link to order detail page */}
-                <Button variant="outline" size="sm">
-                  View Details <ChevronRight className="w-4 h-4 ml-1" />
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => handleReorder(order.id)}
+                  className="text-green-600 border-green-600 hover:bg-green-50"
+                >
+                  <RefreshCw className="w-4 h-4 mr-1" />
+                  Reorder
                 </Button>
-              </Link>
+                <Link href={`/orders/${order.id}`}>
+                  <Button variant="outline" size="sm">
+                    View Details <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         ))}

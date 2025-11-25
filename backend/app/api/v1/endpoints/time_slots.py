@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from typing import List
 from datetime import datetime, date, timedelta, time as dt_time
-from app.api.deps import get_db, get_current_user, get_current_admin_user
+from app.api.deps import get_db, get_current_user, get_admin_user
 from app.models.user import User
 from app.models.time_slot import TimeSlot, RestaurantSlotConfig, SlotAvailability
 from app.models.restaurant import Restaurant
@@ -26,7 +26,7 @@ router = APIRouter()
 async def create_time_slot(
     time_slot: TimeSlotCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Create a new time slot (Admin only)
@@ -78,7 +78,7 @@ async def update_time_slot(
     time_slot_id: int,
     time_slot_update: TimeSlotUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Update a time slot (Admin only)
@@ -103,7 +103,7 @@ async def update_time_slot(
 async def delete_time_slot(
     time_slot_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Delete a time slot (Admin only)
@@ -128,7 +128,7 @@ async def delete_time_slot(
 async def create_restaurant_slot_config(
     config: RestaurantSlotConfigCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Create slot configuration for a restaurant (Admin only)
@@ -181,7 +181,7 @@ async def create_restaurant_slot_config(
 async def create_bulk_restaurant_slot_configs(
     bulk_config: BulkSlotConfigCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Create slot configurations for multiple time slots at once (Admin only)
@@ -262,7 +262,7 @@ async def update_restaurant_slot_config(
     config_id: int,
     config_update: RestaurantSlotConfigUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Update a restaurant slot configuration (Admin only)
@@ -293,7 +293,7 @@ async def update_restaurant_slot_config(
 async def delete_restaurant_slot_config(
     config_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Delete a restaurant slot configuration (Admin only)
@@ -452,7 +452,7 @@ async def update_slot_availability(
     availability_id: int,
     availability_update: SlotAvailabilityUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_admin_user)
+    current_user: User = Depends(get_admin_user)
 ):
     """
     Manually update slot availability (e.g., disable specific date slot) (Admin only)

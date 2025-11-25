@@ -26,6 +26,7 @@ interface AuthState {
     last_name?: string;
     phone?: string;
   }) => Promise<void>;
+  googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
   fetchUser: () => Promise<void>;
   updateUser: (user: User) => void;
@@ -66,6 +67,28 @@ export const useAuthStore = create<AuthState>()(
           await authApi.signup(data);
           // Auto-login after signup
           await useAuthStore.getState().login(data.email, data.password);
+        } catch (error) {
+          set({ isLoading: false });
+          throw error;
+        }
+      },
+
+      googleLogin: async (credential: string) => {
+        set({ isLoading: true });
+        try {
+          const response = await authApi.googleLogin(credential);
+          const { access_token, refresh_token } = response.data;
+
+          Cookies.set('access_token', access_token);
+          Cookies.set('refresh_token', refresh_token);
+
+          // Fetch user profile
+          const userResponse = await userApi.getProfile();
+          set({
+            user: userResponse.data,
+            isAuthenticated: true,
+            isLoading: false,
+          });
         } catch (error) {
           set({ isLoading: false });
           throw error;

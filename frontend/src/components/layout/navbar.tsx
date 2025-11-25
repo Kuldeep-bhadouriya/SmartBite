@@ -18,6 +18,8 @@ export function Navbar() {
   const navLinks = [
     { href: '/', label: 'Home' },
     { href: '/restaurants', label: 'Restaurants' },
+    { href: '/meal-planner', label: 'Meal Planner' },
+    { href: '/recommendations', label: 'For You' },
     { href: '/orders', label: 'Orders' },
   ];
 

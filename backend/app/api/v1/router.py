@@ -1,5 +1,8 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, restaurants, menu, cart, orders, addresses, payments, admin, time_slots
+from app.api.v1.endpoints import (
+    auth, users, restaurants, menu, cart, orders, addresses, 
+    payments, admin, time_slots, preferences, meal_plans, recommendations
+)
 
 api_router = APIRouter()
 
@@ -12,4 +15,7 @@ api_router.include_router(orders.router, prefix="/orders", tags=["Orders"])
 api_router.include_router(addresses.router, prefix="/addresses", tags=["Addresses"])
 api_router.include_router(payments.router, prefix="/payments", tags=["Payments"])
 api_router.include_router(time_slots.router, prefix="/time-slots", tags=["Time Slots & Scheduling"])
+api_router.include_router(preferences.router, prefix="/preferences", tags=["User Preferences"])
+api_router.include_router(meal_plans.router, prefix="/meal-plans", tags=["Meal Plans"])
+api_router.include_router(recommendations.router, prefix="/recommendations", tags=["Recommendations"])
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])

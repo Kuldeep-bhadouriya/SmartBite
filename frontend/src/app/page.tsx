@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Search, MapPin, Clock, Star, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import RecommendationsSection from '@/components/recommendations/recommendations-section';
 
 export default function Home() {
   return (
@@ -40,6 +41,13 @@ export default function Home() {
         
         {/* Decorative elements */}
         <div className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-white to-transparent" />
+      </section>
+
+      {/* Recommendations Section - only show if authenticated */}
+      <section className="py-16 bg-gray-50">
+        <div className="container mx-auto px-4">
+          <RecommendationsSection />
+        </div>
       </section>
 
       {/* Features Section */}
